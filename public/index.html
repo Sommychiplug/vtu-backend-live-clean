@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftVTU - Buy Airtime & Data Instantly</title>
+    <!-- Firebase SDK (version 8) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <!-- Paystack -->
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { background: #f5f5f5; }
+        .navbar { display: flex; justify-content: space-between; align-items: center; padding: 1rem 2rem; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .logo { color: #d4af37; }
+        .nav-links a { margin-left: 1rem; text-decoration: none; color: #333; }
+        .gold-btn { background: #d4af37; color: white; padding: 0.5rem 1rem; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .gold-btn:hover { background: #b8960c; }
+        .hero { text-align: center; padding: 4rem 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .hero h1 { font-size: 3rem; }
+        .hero p { font-size: 1.2rem; margin: 1rem 0; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 2rem; padding: 3rem 2rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+        .card h3 { margin-bottom: 0.5rem; color: #333; }
+        .form-container { max-width: 400px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .form-container input, .form-container select { width: 100%; padding: 0.75rem; margin: 0.5rem 0; border: 1px solid #ddd; border-radius: 5px; }
+        .form-container button { width: 100%; padding: 0.75rem; background: #d4af37; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .form-container button:hover { background: #b8960c; }
+        .toggle-link { text-align: center; margin-top: 1rem; }
+        .toggle-link span { color: #d4af37; cursor: pointer; }
+        .dashboard { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+        .hidden { display: none; }
+        #userEmail { font-weight: bold; }
+        .logout-btn { background: #dc3545; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.3s; }
+        .logout-btn:hover { background: #c82333; }
+
+        /* ===== Fancy Dashboard Styles ===== */
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            background: white;
+            padding: 1.5rem 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .user-greeting h2 {
+            font-size: 1.8rem;
+            color: #333;
+            margin-bottom: 0.3rem;
+        }
+        .user-greeting .last-login {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        .wallet-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            padding: 2rem;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        .wallet-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .wallet-label {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-bottom: 0.5rem;
+        }
+        .wallet-balance {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+        .fund-btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .fund-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .section-title {
+            font-size: 1.6rem;
+            color: #333;
+            margin: 2rem 0 1.5rem;
+            border-left: 5px solid #d4af37;
+            padding-left: 1rem;
+        }
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.8rem;
+            margin-bottom: 2rem;
+        }
+        .service-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        .card-header {
+            background: linear-gradient(to right, #f8f9fa, #e9ecef);
+            padding: 1.2rem;
+            display: flex;
+            align-items: center;
+            border-bottom: 2px solid #d4af37;
+        }
+        .card-icon {
+            font-size: 2rem;
+            margin-right: 0.8rem;
+        }
+        .card-header h4 {
+            font-size: 1.3rem;
+            color: #333;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .service-select, .card-body input {
+            width: 100%;
+            padding: 0.8rem;
+            margin-bottom: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+        .buy-btn {
+            width: 100%;
+            background: #d4af37;
+            color: white;
+            border: none;
+            padding: 0.8rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 0.5rem;
+        }
+        .buy-btn:hover {
+            background: #b8960c;
+        }
+        .buy-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .service-message {
+            margin-top: 0.8rem;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        .transactions-table {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            overflow-x: auto;
+        }
+        .transactions-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .transactions-table th {
+            text-align: left;
+            padding: 1rem 0.5rem;
+            color: #666;
+            font-weight: 600;
+            border-bottom: 2px solid #eee;
+        }
+        .transactions-table td {
+            padding: 0.8rem 0.5rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .transactions-table tr:last-child td {
+            border-bottom: none;
+        }
+        .status {
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h2 class="logo">SwiftVTU</h2>
+        <div class="nav-links" id="navLinks">
+            <!-- Dynamically filled by JS -->
+        </div>
+    </nav>
+
+    <!-- Hero Section (visible when logged out) -->
+    <section class="hero" id="heroSection">
+        <h1>Fast & Secure VTU Services</h1>
+        <p>Buy Airtime, Data, Pay Bills and Fund your wallet instantly.</p>
+        <button class="gold-btn big-btn" id="getStartedBtn">Get Started</button>
+    </section>
+
+    <!-- Features Section (always visible) -->
+    <section class="features" id="featuresSection">
+        <div class="card"><h3>📱 Airtime</h3><p>Instant airtime for all networks.</p></div>
+        <div class="card"><h3>🌐 Data</h3><p>Cheap data bundles available.</p></div>
+        <div class="card"><h3>💡 Electricity</h3><p>Pay electricity bills instantly.</p></div>
+        <div class="card"><h3>📺 Cable TV</h3><p>DSTV, GOTV and Startimes payments.</p></div>
+    </section>
+
+    <!-- Login/Register Forms Container (hidden by default) -->
+    <div id="authForms" class="hidden">
+        <!-- Login Form -->
+        <div id="loginForm" class="form-container">
+            <h2>Login</h2>
+            <input type="email" id="loginEmail" placeholder="Email" required>
+            <input type="password" id="loginPassword" placeholder="Password" required>
+            <button id="loginBtn">Login</button>
+            <p class="toggle-link">Don't have an account? <span id="showRegister">Register</span></p>
+        </div>
+
+        <!-- Register Form (hidden initially) -->
+        <div id="registerForm" class="form-container hidden">
+            <h2>Register</h2>
+            <input type="email" id="regEmail" placeholder="Email" required>
+            <input type="password" id="regPassword" placeholder="Password" required>
+            <button id="registerBtn">Register</button>
+            <p class="toggle-link">Already have an account? <span id="showLogin">Login</span></p>
+        </div>
+    </div>
+
+    <!-- Dashboard (hidden by default) -->
+    <div id="dashboard" class="hidden">
+        <div class="dashboard-container">
+            <div class="dashboard-header">
+                <div class="user-greeting">
+                    <h2>Welcome back, <span id="userEmail"></span>!</h2>
+                    <p class="last-login">Last login: Today, 10:30 AM</p>
+                </div>
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </div>
+
+            <!-- Wallet Card -->
+            <div class="wallet-card">
+                <div class="wallet-info">
+                    <span class="wallet-label">Wallet Balance</span>
+                    <span class="wallet-balance">₦0.00</span>
+                </div>
+                <button class="fund-btn">Fund Wallet</button>
+            </div>
+
+            <!-- Services Grid -->
+            <h3 class="section-title">Our Services</h3>
+            <div class="services-grid">
+                <!-- Airtime Card -->
+                <div class="service-card">
+                    <div class="card-header">
+                        <span class="card-icon">📱</span>
+                        <h4>Airtime</h4>
+                    </div>
+                    <div class="card-body">
+                        <select id="airtimeNetwork" class="service-select">
+                            <option value="mtn">MTN</option>
+                            <option value="glo">Glo</option>
+                            <option value="airtel">Airtel</option>
+                            <option value="9mobile">9mobile</option>
+                        </select>
+                        <input type="text" id="airtimePhone" placeholder="Phone Number">
+                        <input type="number" id="airtimeAmount" placeholder="Amount (₦)">
+                        <button id="buyAirtimeBtn" class="buy-btn">Buy Airtime</button>
+                        <p id="airtimeMessage" class="service-message"></p>
+                    </div>
+                </div>
+
+                <!-- Data Card -->
+                <div class="service-card">
+                    <div class="card-header">
+                        <span class="card-icon">🌐</span>
+                        <h4>Data Bundle</h4>
+                    </div>
+                    <div class="card-body">
+                        <select id="dataNetwork" class="service-select">
+                            <option value="mtn">MTN</option>
+                            <option value="glo">Glo</option>
+                            <option value="airtel">Airtel</option>
+                            <option value="9mobile">9mobile</option>
+                        </select>
+                        <input type="text" id="dataPhone" placeholder="Phone Number">
+                        <select id="dataPlan" class="service-select">
+                            <option value="500">500MB - ₦100</option>
+                            <option value="1000">1GB - ₦200</option>
+                            <option value="2000">2GB - ₦400</option>
+                        </select>
+                        <button id="buyDataBtn" class="buy-btn">Buy Data</button>
+                        <p id="dataMessage" class="service-message"></p>
+                    </div>
+                </div>
+
+                <!-- Electricity Card -->
+                <div class="service-card">
+                    <div class="card-header">
+                        <span class="card-icon">💡</span>
+                        <h4>Electricity</h4>
+                    </div>
+                    <div class="card-body">
+                        <select id="electricityProvider" class="service-select">
+                            <option value="ikeja-electric">Ikeja Electric</option>
+                            <option value="eko-electric">Eko Electric</option>
+                            <option value="abuja-electric">Abuja Electric</option>
+                        </select>
+                        <input type="text" id="meterNumber" placeholder="Meter Number">
+                        <input type="number" id="electricityAmount" placeholder="Amount (₦)">
+                        <button id="buyElectricityBtn" class="buy-btn">Pay Bill</button>
+                        <p id="electricityMessage" class="service-message"></p>
+                    </div>
+                </div>
+
+                <!-- Cable TV Card -->
+                <div class="service-card">
+                    <div class="card-header">
+                        <span class="card-icon">📺</span>
+                        <h4>Cable TV</h4>
+                    </div>
+                    <div class="card-body">
+                        <select id="tvProvider" class="service-select">
+                            <option value="dstv">DSTV</option>
+                            <option value="gotv">GOTV</option>
+                            <option value="startimes">Startimes</option>
+                        </select>
+                        <input type="text" id="smartCardNumber" placeholder="Smart Card / IUC Number">
+                        <select id="tvPackage" class="service-select">
+                            <option value="basic">Basic - ₦2,500</option>
+                            <option value="standard">Standard - ₦4,500</option>
+                            <option value="premium">Premium - ₦9,500</option>
+                        </select>
+                        <button id="buyTvBtn" class="buy-btn">Subscribe</button>
+                        <p id="tvMessage" class="service-message"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Transactions -->
+            <h3 class="section-title">Recent Transactions</h3>
+            <div class="transactions-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Service</th>
+                            <th>Details</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>2025-03-13</td>
+                            <td>Airtime</td>
+                            <td>MTN - 08012345678</td>
+                            <td>₦500</td>
+                            <td><span class="status success">Successful</span></td>
+                        </tr>
+                        <tr>
+                            <td>2025-03-12</td>
+                            <td>Data</td>
+                            <td>Glo - 1GB</td>
+                            <td>₦200</td>
+                            <td><span class="status success">Successful</span></td>
+                        </tr>
+                        <tr>
+                            <td>2025-03-11</td>
+                            <td>Electricity</td>
+                            <td>Ikeja Electric - 12345678</td>
+                            <td>₦2,000</td>
+                            <td><span class="status pending">Pending</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== FIREBASE CONFIG (Replace with your own) ==========
+      const firebaseConfig = {
+  apiKey: "AIzaSyAwF-1DBHJCZ0gagu2TviObmyYGGpbv_jg",
+  authDomain: "swiftvtu-83db2.firebaseapp.com",
+  projectId: "swiftvtu-83db2",
+  storageBucket: "swiftvtu-83db2.firebasestorage.app",
+  messagingSenderId: "219645512780",
+  appId: "1:219645512780:web:9e9712252a6a6fa713b8e9"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+        // ========== BACKEND API BASE URL (REPLACE WITH YOUR RENDER URL) ==========
+        const API_BASE = 'https://vtu-backend-zrb2.onrender.com'; 
+
+        // Wait for DOM to be ready
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof firebase === 'undefined') {
+                console.error('Firebase SDK not loaded');
+                alert('Firebase failed to load. Please refresh.');
+                return;
+            }
+
+            firebase.initializeApp(firebaseConfig);
+            const auth = firebase.auth();
+            const db = firebase.firestore();
+
+            // DOM elements
+            const heroSection = document.getElementById('heroSection');
+            const authForms = document.getElementById('authForms');
+            const dashboard = document.getElementById('dashboard');
+            const navLinks = document.getElementById('navLinks');
+            const loginFormDiv = document.getElementById('loginForm');
+            const registerFormDiv = document.getElementById('registerForm');
+            const userEmailSpan = document.getElementById('userEmail');
+            const getStartedBtn = document.getElementById('getStartedBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+
+            // Toggle forms
+            document.getElementById('showRegister').addEventListener('click', () => {
+                loginFormDiv.classList.add('hidden');
+                registerFormDiv.classList.remove('hidden');
+            });
+            document.getElementById('showLogin').addEventListener('click', () => {
+                registerFormDiv.classList.add('hidden');
+                loginFormDiv.classList.remove('hidden');
+            });
+
+            // Get Started button
+            if (getStartedBtn) {
+                getStartedBtn.addEventListener('click', () => {
+                    heroSection.classList.add('hidden');
+                    authForms.classList.remove('hidden');
+                });
+            }
+
+            // Register
+            document.getElementById('registerBtn').addEventListener('click', async () => {
+                const email = document.getElementById('regEmail').value;
+                const password = document.getElementById('regPassword').value;
+                if (!email || !password) {
+                    alert('Please enter email and password');
+                    return;
+                }
+                try {
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    const user = userCredential.user;
+                    await db.collection('users').doc(user.uid).set({
+                        email: user.email,
+                        balance: 0,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+
+            // Login
+            document.getElementById('loginBtn').addEventListener('click', async () => {
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                if (!email || !password) {
+                    alert('Please enter email and password');
+                    return;
+                }
+                try {
+                    await auth.signInWithEmailAndPassword(email, password);
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+
+            // Logout
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async () => {
+                    await auth.signOut();
+                });
+            }
+
+            // Auth state observer
+            auth.onAuthStateChanged(async user => {
+                if (user) {
+                    const userDoc = await db.collection('users').doc(user.uid).get();
+                    let balance = 0;
+                    if (userDoc.exists) {
+                        balance = userDoc.data().balance || 0;
+                    } else {
+                        await db.collection('users').doc(user.uid).set({ email: user.email, balance: 0 });
+                    }
+
+                    userEmailSpan.textContent = user.email;
+                    document.querySelector('.wallet-balance').textContent = `₦${balance.toFixed(2)}`;
+                    dashboard.classList.remove('hidden');
+                    authForms.classList.add('hidden');
+                    heroSection.classList.add('hidden');
+                    navLinks.innerHTML = `<span>Welcome, ${user.email}</span>`;
+                } else {
+                    dashboard.classList.add('hidden');
+                    heroSection.classList.remove('hidden');
+                    authForms.classList.add('hidden');
+                    navLinks.innerHTML = `
+                        <a href="#" id="navLogin">Login</a>
+                        <a href="#" id="navRegister" class="gold-btn">Register</a>
+                    `;
+
+                    document.getElementById('navLogin')?.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        heroSection.classList.add('hidden');
+                        authForms.classList.remove('hidden');
+                        loginFormDiv.classList.remove('hidden');
+                        registerFormDiv.classList.add('hidden');
+                    });
+                    document.getElementById('navRegister')?.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        heroSection.classList.add('hidden');
+                        authForms.classList.remove('hidden');
+                        registerFormDiv.classList.remove('hidden');
+                        loginFormDiv.classList.add('hidden');
+                    });
+                }
+            });
+
+            // ========== PAYSTACK FUNDING ==========
+            const PAYSTACK_PUBLIC_KEY = 'pk_live_e607fa08c384f3301ffe0b0714d885d25dc74075';
+
+            document.querySelector('.fund-btn')?.addEventListener('click', () => {
+                const user = auth.currentUser;
+                if (!user) { alert('You must be logged in'); return; }
+
+                const amount = prompt('Enter amount to fund (₦):', '1000');
+                if (!amount || isNaN(amount) || amount < 100) {
+                    alert('Minimum amount is ₦100');
+                    return;
+                }
+
+                const handler = PaystackPop.setup({
+                    key: PAYSTACK_PUBLIC_KEY,
+                    email: user.email,
+                    amount: amount * 100,
+                    currency: 'NGN',
+                    ref: 'VTU_' + Math.floor(Math.random() * 1000000000) + 1,
+                    callback: function(response) {
+                        document.querySelector('.wallet-balance').textContent = '₦... (crediting)';
+                        fetch(`${API_BASE}/api/verify-payment`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                reference: response.reference,
+                                userId: user.uid,
+                                amount: amount
+                            })
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.success) {
+                                alert('Wallet funded successfully!');
+                                refreshWalletBalance();
+                            } else {
+                                alert('Verification failed: ' + (data.error || 'Unknown error'));
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Fetch error:', err);
+                            alert('Error verifying payment: ' + err.message);
+                        });
+                    },
+                    onClose: function() {
+                        alert('Transaction cancelled.');
+                    }
+                });
+                handler.openIframe();
+            });
+
+            // Helper to refresh wallet balance
+            async function refreshWalletBalance() {
+                const user = auth.currentUser;
+                if (!user) return;
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                const balance = userDoc.exists ? userDoc.data().balance : 0;
+                document.querySelector('.wallet-balance').textContent = `₦${balance.toFixed(2)}`;
+            }
+
+            // ========== AIRTIME PURCHASE ==========
+            document.getElementById('buyAirtimeBtn')?.addEventListener('click', async () => {
+                const network = document.getElementById('airtimeNetwork').value;
+                const phone = document.getElementById('airtimePhone').value;
+                const amount = document.getElementById('airtimeAmount').value;
+                const messageEl = document.getElementById('airtimeMessage');
+                const user = auth.currentUser;
+
+                if (!user) { messageEl.textContent = 'Please log in first'; return; }
+                if (!phone || !amount) { messageEl.textContent = 'Please fill all fields'; return; }
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/airtime`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, network, amount, userId: user.uid })
+                    });
+                    const data = await response.json();
+                    if (data.status === "true") {
+                        messageEl.textContent = 'Airtime purchased successfully!';
+                        setTimeout(refreshWalletBalance, 1000);
+                    } else {
+                        messageEl.textContent = 'Failed: ' + (data.message || 'Unknown error');
+                    }
+                } catch (err) {
+                    messageEl.textContent = 'Error: ' + err.message;
+                }
+            });
+
+            // ========== DATA PURCHASE ==========
+            document.getElementById('buyDataBtn')?.addEventListener('click', async () => {
+                const network = document.getElementById('dataNetwork').value;
+                const phone = document.getElementById('dataPhone').value;
+                const plan = document.getElementById('dataPlan').value;
+                const amount = document.getElementById('dataPlan').selectedOptions[0]?.text.match(/₦(\d+)/)?.[1] || 0;
+                const messageEl = document.getElementById('dataMessage');
+                const user = auth.currentUser;
+
+                if (!user) { messageEl.textContent = 'Please log in first'; return; }
+                if (!phone || !plan) { messageEl.textContent = 'Please fill all fields'; return; }
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/data`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, network, plan, amount, userId: user.uid })
+                    });
+                    const data = await response.json();
+                    if (data.status === "true") {
+                        messageEl.textContent = 'Data purchased successfully!';
+                        setTimeout(refreshWalletBalance, 1000);
+                    } else {
+                        messageEl.textContent = 'Failed: ' + (data.message || 'Unknown error');
+                    }
+                } catch (err) {
+                    messageEl.textContent = 'Error: ' + err.message;
+                }
+            });
+
+            // ========== ELECTRICITY PAYMENT ==========
+            document.getElementById('buyElectricityBtn')?.addEventListener('click', async () => {
+                const provider = document.getElementById('electricityProvider').value;
+                const meterNumber = document.getElementById('meterNumber').value;
+                const amount = document.getElementById('electricityAmount').value;
+                const messageEl = document.getElementById('electricityMessage');
+                const user = auth.currentUser;
+
+                if (!user) { messageEl.textContent = 'Please log in first'; return; }
+                if (!meterNumber || !amount) { messageEl.textContent = 'Please fill all fields'; return; }
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/electricity`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ provider, meterNumber, amount, userId: user.uid })
+                    });
+                    const data = await response.json();
+                    if (data.status === "true") {
+                        messageEl.textContent = 'Electricity bill paid successfully!';
+                        setTimeout(refreshWalletBalance, 1000);
+                    } else {
+                        messageEl.textContent = 'Failed: ' + (data.message || 'Unknown error');
+                    }
+                } catch (err) {
+                    messageEl.textContent = 'Error: ' + err.message;
+                }
+            });
+
+            // ========== CABLE TV SUBSCRIPTION ==========
+            document.getElementById('buyTvBtn')?.addEventListener('click', async () => {
+                const provider = document.getElementById('tvProvider').value;
+                const smartCard = document.getElementById('smartCardNumber').value;
+                const plan = document.getElementById('tvPackage').value;
+                // Extract amount from selected option (simple parsing)
+                const amountText = document.getElementById('tvPackage').selectedOptions[0]?.text;
+                const amount = amountText?.match(/₦([\d,]+)/)?.[1]?.replace(/,/, '') || 0;
+                const messageEl = document.getElementById('tvMessage');
+                const user = auth.currentUser;
+
+                if (!user) { messageEl.textContent = 'Please log in first'; return; }
+                if (!smartCard || !plan) { messageEl.textContent = 'Please fill all fields'; return; }
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/cabletv`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ provider, smartCard, plan, amount, userId: user.uid })
+                    });
+                    const data = await response.json();
+                    if (data.status === "true") {
+                        messageEl.textContent = 'Subscription successful!';
+                        setTimeout(refreshWalletBalance, 1000);
+                    } else {
+                        messageEl.textContent = 'Failed: ' + (data.message || 'Unknown error');
+                    }
+                } catch (err) {
+                    messageEl.textContent = 'Error: ' + err.message;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
