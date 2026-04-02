@@ -1,37 +1,51 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const axios = require('axios');
 const admin = require('firebase-admin');
 
-// Initialize Firebase Admin
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// ===================== FIREBASE INIT =====================
 const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
     ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
     : require('./serviceAccountKey.json');
 
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
 const db = admin.firestore();
 
-const app = express();
-const corsOptions = {
-  origin: 'https://smarttop.netlify.app',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
-  credentials: true,
-  optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
-app.use(bodyParser.json());
+// ===================== MIDDLEWARE =====================
+const allowedOrigins = [
+    "https://smarttop.netlify.app",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500"
+];
+
+app.use(cors({
+    origin: function(origin, callback) {
+        if (!origin) return callback(null, true); // allow Postman / mobile apps
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        console.log("Blocked by CORS:", origin);
+        return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
+    credentials: true,
+    optionsSuccessStatus: 200
+}));
+
+app.use(express.json());
 app.use(express.static('public'));
 
-const PORT = process.env.PORT || 5000;
-
-// CheapDataHub config
+// ===================== CHEAPDATAHUB CONFIG =====================
 const CHEAPDATAHUB_API_KEY = process.env.CHEAPDATAHUB_API_KEY;
 const CHEAPDATAHUB_BASE_URL = 'https://www.cheapdatahub.ng/api/v1/resellers';
 
-// ID mappings (adjust to CheapDataHub actual IDs)
+// ID mappings
 const providerIdMap = { mtn: 1, glo: 2, airtel: 3, '9mobile': 4 };
 const bundleIdMap = {
     mtn: { '500': 101, '1000': 102, '2000': 103 },
@@ -39,9 +53,7 @@ const bundleIdMap = {
     airtel: { '500': 301, '1000': 302, '2000': 303 },
     '9mobile': { '500': 401, '1000': 402, '2000': 403 }
 };
-const discoIdMap = {
-    'ikeja-electric': 1, 'eko-electric': 2, 'abuja-electric': 3
-};
+const discoIdMap = { 'ikeja-electric': 1, 'eko-electric': 2, 'abuja-electric': 3 };
 const cableProviderIdMap = { dstv: 1, gotv: 2, startimes: 3 };
 const cablePlanIdMap = {
     dstv: { 'basic': 101, 'standard': 102, 'premium': 103 },
@@ -53,6 +65,7 @@ const cablePlanIdMap = {
 async function isAdmin(req, res, next) {
     const userId = req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
     const userDoc = await db.collection('users').doc(userId).get();
     if (!userDoc.exists || !userDoc.data().isAdmin) {
         return res.status(403).json({ error: 'Admin access required' });
@@ -60,8 +73,7 @@ async function isAdmin(req, res, next) {
     next();
 }
 
-// ===================== SERVICE MANAGEMENT =====================
-// Seed default services if none exist
+// ===================== SERVICE SEEDING =====================
 async function seedServices() {
     const servicesSnapshot = await db.collection('services').limit(1).get();
     if (!servicesSnapshot.empty) return;
@@ -102,13 +114,26 @@ async function seedServices() {
     }
     console.log('Default services seeded.');
 }
-seedServices();
 
-// Get all services (public)
+(async () => {
+    try {
+        await seedServices();
+    } catch (err) {
+        console.error('Failed to seed services:', err);
+    }
+})();
+
+// ===================== ROUTES =====================
+// Public: get services
 app.get('/api/services', async (req, res) => {
-    const snapshot = await db.collection('services').where('isActive', '==', true).get();
-    const services = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(services);
+    try {
+        const snapshot = await db.collection('services').where('isActive', '==', true).get();
+        const services = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(services);
+    } catch (error) {
+        console.error('Error fetching services:', error);
+        res.status(500).json({ error: 'Failed to load services' });
+    }
 });
 
 // Admin: update service price
@@ -116,44 +141,43 @@ app.put('/api/admin/services/:id', isAdmin, async (req, res) => {
     const { id } = req.params;
     const { price } = req.body;
     if (!price) return res.status(400).json({ error: 'Price required' });
-    await db.collection('services').doc(id).update({ price });
-    res.json({ success: true });
+    try {
+        await db.collection('services').doc(id).update({ price });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating service price:', error);
+        res.status(500).json({ error: 'Failed to update service price' });
+    }
 });
+// ===================== PURCHASE ENDPOINTS =====================
 
-// Admin: add new service (manual)
-app.post('/api/admin/services', isAdmin, async (req, res) => {
-    const serviceData = req.body;
-    const id = `${serviceData.type}_${serviceData.network || serviceData.provider}_${serviceData.plan || ''}`.toLowerCase().replace(/\s/g, '_');
-    serviceData.createdAt = admin.firestore.FieldValue.serverTimestamp();
-    await db.collection('services').doc(id).set(serviceData);
-    res.json({ success: true, id });
-});
-
-// ===================== PURCHASE FUNCTIONS =====================
-// Helper to get service price from Firestore (you can also use cached mapping)
-async function getServicePrice(serviceId) {
-    const doc = await db.collection('services').doc(serviceId).get();
-    return doc.exists ? doc.data().price : null;
-}
-
-// Airtime
+// Airtime purchase
 app.post('/api/airtime', async (req, res) => {
     const { phone, network, amount, userId } = req.body;
-    if (!phone || !network || !amount || !userId) return res.status(400).json({ error: 'Missing fields' });
+    if (!phone || !network || !amount || !userId)
+        return res.status(400).json({ error: 'Missing fields' });
+
     const provider_id = providerIdMap[network.toLowerCase()];
     if (!provider_id) return res.status(400).json({ error: 'Invalid network' });
 
     try {
+        // check user balance
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+        const userBalance = userDoc.data().balance || 0;
+        if (userBalance < parseFloat(amount))
+            return res.status(400).json({ error: 'Insufficient balance' });
+
         const response = await axios.post(`${CHEAPDATAHUB_BASE_URL}/airtime/purchase/`, {
             provider_id,
             phone_number: phone,
             amount: Number(amount)
         }, {
-            headers: { 'Authorization': `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
+            headers: { Authorization: `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
         });
 
         if (response.data.status === "true") {
-            const userRef = db.collection('users').doc(userId);
             await userRef.update({ balance: admin.firestore.FieldValue.increment(-parseFloat(amount)) });
             await userRef.collection('transactions').add({
                 type: 'Airtime',
@@ -162,7 +186,6 @@ app.post('/api/airtime', async (req, res) => {
                 status: 'success',
                 date: admin.firestore.FieldValue.serverTimestamp()
             });
-            // Also store order globally
             await db.collection('orders').add({
                 userId,
                 type: 'Airtime',
@@ -178,24 +201,31 @@ app.post('/api/airtime', async (req, res) => {
     }
 });
 
-// Data (similar, using bundle_id)
+// Data purchase
 app.post('/api/data', async (req, res) => {
     const { phone, network, plan, userId, amount } = req.body;
-    if (!phone || !network || !plan || !userId) return res.status(400).json({ error: 'Missing fields' });
-    const networkKey = network.toLowerCase();
-    const bundle_id = bundleIdMap[networkKey]?.[plan];
+    if (!phone || !network || !plan || !userId || !amount)
+        return res.status(400).json({ error: 'Missing fields' });
+
+    const bundle_id = bundleIdMap[network.toLowerCase()]?.[plan];
     if (!bundle_id) return res.status(400).json({ error: 'Invalid network or plan' });
 
     try {
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+        const userBalance = userDoc.data().balance || 0;
+        if (userBalance < parseFloat(amount))
+            return res.status(400).json({ error: 'Insufficient balance' });
+
         const response = await axios.post(`${CHEAPDATAHUB_BASE_URL}/data/purchase/`, {
             bundle_id,
             phone_number: phone
         }, {
-            headers: { 'Authorization': `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
+            headers: { Authorization: `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
         });
 
         if (response.data.status === "true") {
-            const userRef = db.collection('users').doc(userId);
             await userRef.update({ balance: admin.firestore.FieldValue.increment(-parseFloat(amount)) });
             await userRef.collection('transactions').add({
                 type: 'Data',
@@ -219,25 +249,33 @@ app.post('/api/data', async (req, res) => {
     }
 });
 
-// Electricity
+// Electricity purchase
 app.post('/api/electricity', async (req, res) => {
     const { provider, meterNumber, amount, userId } = req.body;
-    if (!provider || !meterNumber || !amount || !userId) return res.status(400).json({ error: 'Missing fields' });
+    if (!provider || !meterNumber || !amount || !userId)
+        return res.status(400).json({ error: 'Missing fields' });
+
     const disco_id = discoIdMap[provider.toLowerCase()];
     if (!disco_id) return res.status(400).json({ error: 'Invalid provider' });
 
     try {
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+        const userBalance = userDoc.data().balance || 0;
+        if (userBalance < parseFloat(amount))
+            return res.status(400).json({ error: 'Insufficient balance' });
+
         const response = await axios.post(`${CHEAPDATAHUB_BASE_URL}/electricity/purchase/`, {
             disco_id,
             meter_number: meterNumber,
             amount: Number(amount),
             phone_number: ''
         }, {
-            headers: { 'Authorization': `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
+            headers: { Authorization: `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
         });
 
         if (response.data.status === "true") {
-            const userRef = db.collection('users').doc(userId);
             await userRef.update({ balance: admin.firestore.FieldValue.increment(-parseFloat(amount)) });
             await userRef.collection('transactions').add({
                 type: 'Electricity',
@@ -261,26 +299,33 @@ app.post('/api/electricity', async (req, res) => {
     }
 });
 
-// Cable TV
+// Cable TV purchase
 app.post('/api/cabletv', async (req, res) => {
     const { provider, smartCard, plan, userId, amount } = req.body;
-    if (!provider || !smartCard || !plan || !userId) return res.status(400).json({ error: 'Missing fields' });
+    if (!provider || !smartCard || !plan || !userId || !amount)
+        return res.status(400).json({ error: 'Missing fields' });
+
     const cable_id = cableProviderIdMap[provider.toLowerCase()];
-    if (!cable_id) return res.status(400).json({ error: 'Invalid provider' });
     const plan_id = cablePlanIdMap[provider.toLowerCase()]?.[plan];
-    if (!plan_id) return res.status(400).json({ error: 'Invalid plan' });
+    if (!cable_id || !plan_id) return res.status(400).json({ error: 'Invalid provider or plan' });
 
     try {
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+        const userBalance = userDoc.data().balance || 0;
+        if (userBalance < parseFloat(amount))
+            return res.status(400).json({ error: 'Insufficient balance' });
+
         const response = await axios.post(`${CHEAPDATAHUB_BASE_URL}/cable/purchase/`, {
             cable_id,
             smart_card_number: smartCard,
             plan_id
         }, {
-            headers: { 'Authorization': `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
+            headers: { Authorization: `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
         });
 
         if (response.data.status === "true") {
-            const userRef = db.collection('users').doc(userId);
             await userRef.update({ balance: admin.firestore.FieldValue.increment(-parseFloat(amount)) });
             await userRef.collection('transactions').add({
                 type: 'Cable TV',
@@ -304,10 +349,11 @@ app.post('/api/cabletv', async (req, res) => {
     }
 });
 
-// ===================== PAYSTACK VERIFICATION =====================
+// ===================== PAYSTACK PAYMENT VERIFICATION =====================
 app.post('/api/verify-payment', async (req, res) => {
     const { reference, userId, amount } = req.body;
-    if (!reference || !userId || !amount) return res.status(400).json({ success: false, error: 'Missing fields' });
+    if (!reference || !userId || !amount)
+        return res.status(400).json({ success: false, error: 'Missing fields' });
 
     try {
         const response = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
@@ -319,16 +365,9 @@ app.post('/api/verify-payment', async (req, res) => {
             await db.runTransaction(async (transaction) => {
                 const userDoc = await transaction.get(userRef);
                 if (!userDoc.exists) throw new Error('User not found');
-                const currentBalance = userDoc.data().balance || 0;
-                transaction.update(userRef, { balance: currentBalance + parseFloat(amount) });
+                transaction.update(userRef, { balance: admin.firestore.FieldValue.increment(parseFloat(amount)) });
             });
-            await userRef.collection('transactions').add({
-                type: 'Wallet Funding',
-                amount: parseFloat(amount),
-                reference,
-                status: 'success',
-                date: admin.firestore.FieldValue.serverTimestamp()
-            });
+
             await db.collection('orders').add({
                 userId,
                 type: 'Deposit',
@@ -336,6 +375,15 @@ app.post('/api/verify-payment', async (req, res) => {
                 status: 'success',
                 date: admin.firestore.FieldValue.serverTimestamp()
             });
+
+            await db.collection('users').doc(userId).collection('transactions').add({
+                type: 'Wallet Funding',
+                amount: parseFloat(amount),
+                reference,
+                status: 'success',
+                date: admin.firestore.FieldValue.serverTimestamp()
+            });
+
             res.json({ success: true });
         } else {
             res.status(400).json({ success: false, error: 'Payment not successful' });
@@ -347,25 +395,51 @@ app.post('/api/verify-payment', async (req, res) => {
 });
 
 // ===================== ADMIN ENDPOINTS =====================
+
 // Get all users
 app.get('/api/admin/users', isAdmin, async (req, res) => {
-    const snapshot = await db.collection('users').get();
-    const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(users);
+    try {
+        const snapshot = await db.collection('users').get();
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(users);
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
 });
 
 // Get all orders
 app.get('/api/admin/orders', isAdmin, async (req, res) => {
-    const snapshot = await db.collection('orders').orderBy('date', 'desc').limit(100).get();
-    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(orders);
+    try {
+        const snapshot = await db.collection('orders').orderBy('date', 'desc').limit(100).get();
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(orders);
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+        res.status(500).json({ error: 'Failed to fetch orders' });
+    }
 });
 
-// Get all deposits (transactions of type 'Wallet Funding')
+// Get all deposits (Wallet Funding transactions)
 app.get('/api/admin/deposits', isAdmin, async (req, res) => {
-    const snapshot = await db.collectionGroup('transactions').where('type', '==', 'Wallet Funding').orderBy('date', 'desc').limit(100).get();
-    const deposits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), userId: doc.ref.parent.parent.id }));
-    res.json(deposits);
+    try {
+        const snapshot = await db.collectionGroup('transactions')
+            .where('type', '==', 'Wallet Funding')
+            .orderBy('date', 'desc')
+            .limit(100)
+            .get();
+
+        const deposits = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            userId: doc.ref.parent.parent.id
+        }));
+
+        res.json(deposits);
+    } catch (error) {
+        console.error('Error fetching deposits:', error);
+        res.status(500).json({ error: 'Failed to fetch deposits' });
+    }
 });
 
 // ===================== START SERVER =====================
