@@ -45,7 +45,7 @@ const PORT = process.env.PORT || 5000;
 const CHEAPDATAHUB_API_KEY = process.env.CHEAPDATAHUB_API_KEY;
 const CHEAPDATAHUB_BASE_URL = 'https://www.cheapdatahub.ng/api/v1/resellers';
 
-// ID mappings (all networks and discos from your table)
+// ID mappings
 const providerIdMap = { mtn: 1, glo: 2, airtel: 3, '9mobile': 4 };
 const discoIdMap = {
     'abuja-electric': 1, 'eko-electric': 2, 'ibadan-electric': 3,
@@ -93,7 +93,7 @@ app.post('/api/admin/services', isAdmin, async (req, res) => {
     res.json({ success: true, id });
 });
 
-// ===================== PURCHASE ENDPOINTS WITH BALANCE CHECK =====================
+// ===================== PURCHASE ENDPOINTS =====================
 
 // Airtime – flexible amount, minimum ₦100
 app.post('/api/airtime', async (req, res) => {
@@ -186,9 +186,9 @@ app.post('/api/data', async (req, res) => {
     }
 });
 
-// Electricity payment
+// Electricity payment (with meterType and phoneNumber)
 app.post('/api/electricity', async (req, res) => {
-    const { provider, meterNumber, amount, userId } = req.body;
+    const { provider, meterNumber, meterType, phoneNumber, amount, userId } = req.body;
     if (!provider || !meterNumber || !amount || !userId) return res.status(400).json({ error: 'Missing fields' });
 
     const userRef = db.collection('users').doc(userId);
@@ -205,7 +205,7 @@ app.post('/api/electricity', async (req, res) => {
             disco_id,
             meter_number: meterNumber,
             amount: Number(amount),
-            phone_number: ''
+            phone_number: phoneNumber || ''
         }, {
             headers: { 'Authorization': `Bearer ${CHEAPDATAHUB_API_KEY}`, 'Content-Type': 'application/json' }
         });
@@ -214,7 +214,7 @@ app.post('/api/electricity', async (req, res) => {
             await userRef.update({ balance: admin.firestore.FieldValue.increment(-parseFloat(amount)) });
             await userRef.collection('transactions').add({
                 type: 'Electricity',
-                details: `${provider} - ${meterNumber}`,
+                details: `${provider} - ${meterNumber} (${meterType || 'N/A'}) - Phone: ${phoneNumber || 'N/A'}`,
                 amount: parseFloat(amount),
                 status: 'success',
                 date: admin.firestore.FieldValue.serverTimestamp()
@@ -222,7 +222,7 @@ app.post('/api/electricity', async (req, res) => {
             await db.collection('orders').add({
                 userId,
                 type: 'Electricity',
-                details: { provider, meterNumber, amount: parseFloat(amount) },
+                details: { provider, meterNumber, meterType, phoneNumber, amount: parseFloat(amount) },
                 status: 'success',
                 date: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -333,7 +333,7 @@ app.get('/api/admin/users', isAdmin, async (req, res) => {
     res.json(users);
 });
 
-// Admin: update user balance (NEW)
+// Admin: update user balance
 app.put('/api/admin/users/:userId/balance', isAdmin, async (req, res) => {
     const { userId } = req.params;
     const { balance } = req.body;
