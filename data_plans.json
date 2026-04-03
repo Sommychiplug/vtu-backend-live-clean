@@ -1,0 +1,38 @@
+[
+  {
+    "bundle_id": 43,
+    "network": "mtn",
+    "size": "110mb",
+    "duration": "Daily",
+    "name": "MTN 110mb (Daily)",
+    "price": 100,
+    "type": "data"
+  },
+  {
+    "bundle_id": 42,
+    "network": "glo",
+    "size": "2GB",
+    "duration": "30-Day",
+    "name": "Glo 2GB (30-Day)",
+    "price": 900,
+    "type": "data"
+  },
+  {
+    "bundle_id": 13,
+    "network": "airtel",
+    "size": "500MB",
+    "duration": "Weekly",
+    "name": "Airtel 500MB (Weekly)",
+    "price": 500,
+    "type": "data"
+  },
+  {
+    "bundle_id": 4,
+    "network": "9mobile",
+    "size": "100",
+    "duration": "daily",
+    "name": "9mobile airtime",
+    "price": 100,
+    "type": "airtime"
+  }
+]
